@@ -1,0 +1,32 @@
+name: Build Test and Containerize
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-container:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: aceest-fitness-devops:${{ github.sha }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build --tag "$IMAGE_NAME" .
+      - name: Compile application in the image
+        run: docker run --rm "$IMAGE_NAME" python -m compileall -q app.py tests
+      - name: Run unit tests in the image
+        run: docker run --rm "$IMAGE_NAME" python -m pytest -q
+      - name: Start the container for a smoke test
+        run: docker run --detach --rm --name aceest-smoke --publish 5099:5000 "$IMAGE_NAME"
+      - name: Verify running-container health endpoint
+        run: python ci/health_check.py http://127.0.0.1:5099/healthz
+      - name: Stop smoke-test container
+        if: always()
+        run: docker rm --force aceest-smoke || true
+      - name: Remove image
+        if: always()
+        run: docker image rm "$IMAGE_NAME" || true
